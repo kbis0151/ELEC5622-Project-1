@@ -1,0 +1,76 @@
+#!/bin/bash
+
+#---------------- Folder Arrangement ------------#
+#                  |- train                      #
+#         |- Data -|- test                       #
+# ~/home -|- Packages                            #
+#         |- Output -|- train                    #
+#                    |- test                     #
+#------------------------------------------------#
+
+
+root_path='/home/elec5622'
+data_root=$root_path'/Data/'
+package_DIR=$root_path'/Packages/'
+
+output_path=$root_path'/Output/'
+train_output_path=$root_path'/Output/train/'
+test_output_path=$root_path'/Output/test/'
+floImg=$package_DIR'MNI152_T1_1mm_brain.nii'
+aalImg=$package_DIR'aal.nii'
+
+#====================  registration =======================#
+echo "=============== begin registration... ========"
+
+#---- process training images
+cd $data_root'train/'
+subIDs=`ls`
+
+for subID in $subIDs 
+do
+   	echo "Processing training image "$subID
+     	refImg=$subID
+
+     fileext='.nii.gz'
+     file=$subID
+     basename $file $fileext
+     filename="${file%%.*}"
+	#affine registration
+     	echo "Register MNI template using affine transform"
+	#TODO
+     #deformable registration
+     	echo "Register MNI template using deformable transform"
+	#TODO
+     #transform AAL atlas
+    	#TODO
+     #remove files no longer needed
+	#TODO
+done
+
+#---- process test images
+cd $data_root'test/'
+subIDs=`ls`
+
+for subID in $subIDs 
+do
+   	echo "Processing test image "$subID
+     	refImg=$subID
+
+     fileext='.nii.gz'
+     file=$subID
+     basename $file $fileext
+     filename=$file
+     filename="${file%%.*}"
+
+	#affine registration
+     	echo "Register MNI template using affine transform"
+	#TODO
+     #deformable registration
+     	echo "Register MNI template using deformable transform"
+	#TODO
+     #transform AAL atlas
+    	#TODO
+     #remove files no longer needed
+     #TODO
+done
+#==================== End of registration ===============#
