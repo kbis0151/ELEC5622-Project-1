@@ -1,0 +1,76 @@
+#!/bin/bash
+
+#---------------- Folder Arrangement ------------#
+#                  |- train                      #
+#         |- Data -|- test                       #
+# ~/home -|- Packages                            #
+#         |- Output -|- train                    #
+#                    |- test                     #
+#------------------------------------------------#
+
+
+root_path='/home/elec5622'
+data_root=$root_path'/Data/'
+package_DIR=$root_path'/Packages/'
+
+output_path=$root_path'/Output/'
+train_output_path=$root_path'/Output/train/'
+test_output_path=$root_path'/Output/test/'
+floImg=$package_DIR'MNI152_T1_1mm_brain.nii'
+aalImg=$package_DIR'aal.nii'
+
+#====================  registration =======================#
+echo "=============== begin registration... ========"
+
+#---- process training images
+cd $data_root'train/'
+subIDs=`ls`
+
+for subID in $subIDs 
+do
+   	echo "Processing training image "$subID
+     	refImg=$subID
+
+     fileext='.nii.gz'
+     file=$subID
+     basename $file $fileext
+     filename="${file%%.*}"
+	#affine registration
+     	echo "Register MNI template using affine transform"
+	flirt -in $floImg -ref ${train_output_path}${filename}_brain -omat ${train_output_path}${filename}_affine.mat
+     #deformable registration
+     	echo "Register MNI template using deformable transform"
+	fnirt --in=$floImg --ref=${train_output_path}${filename}_brain --aff=${train_output_path}${filename}_affine.mat --cout=${train_output_path}${filename}_warp
+     #transform AAL atlas
+	applywarp --ref=${train_output_path}${filename}_brain --in=$aalImg --warp=${train_output_path}${filename}_warp --out=${train_output_path}AAL_to_${filename} --interp=nn
+     #remove files no longer needed
+	rm -f ${train_output_path}${filename}_affine.mat ${train_output_path}${filename}_warp.nii.gz
+done
+
+#---- process test images
+cd $data_root'test/'
+subIDs=`ls`
+
+for subID in $subIDs 
+do
+   	echo "Processing test image "$subID
+     	refImg=$subID
+
+     fileext='.nii.gz'
+     file=$subID
+     basename $file $fileext
+     filename=$file
+     filename="${file%%.*}"
+
+	#affine registration
+     	echo "Register MNI template using affine transform"
+	flirt -in $floImg -ref ${test_output_path}${filename}_brain -omat ${test_output_path}${filename}_affine.mat
+     #deformable registration
+     	echo "Register MNI template using deformable transform"
+	fnirt --in=$floImg --ref=${test_output_path}${filename}_brain --aff=${test_output_path}${filename}_affine.mat --cout=${test_output_path}${filename}_warp
+     #transform AAL atlas
+	applywarp --ref=${test_output_path}${filename}_brain --in=$aalImg --warp=${test_output_path}${filename}_warp --out=${test_output_path}AAL_to_${filename} --interp=nn
+     #remove files no longer needed
+	rm -f ${test_output_path}${filename}_affine.mat ${test_output_path}${filename}_warp.nii.gz
+done
+#==================== End of registration ===============#
