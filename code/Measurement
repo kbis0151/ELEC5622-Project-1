@@ -9,95 +9,152 @@
 #------------------------------------------------#
 
 
-root_path='/home/elec5622'
-data_root=$root_path'/Data/'
-package_DIR=$root_path'/Packages/'
+r#!/bin/bash
 
-output_path=$root_path'/Output/'
-train_output_path=$root_path'/Output/train/'
-test_output_path=$root_path'/Output/test/'
-floImg=$package_DIR'MNI152_T1_1mm_brain.nii'
-aalImg=$package_DIR'aal.nii'
+# Automatically locate repository root
+root_path="$(cd "$(dirname "$0")/.." && pwd)"
 
-#====================  measurement =======================#
-echo "=============== begin measurement... ========"
+data_root="$root_path/Data"
+train_output_path="$root_path/Output/train"
+test_output_path="$root_path/Output/test"
 
-#----- processing training images
-cd $data_root'train/'
-subIDs=`ls`
+train_csv="$train_output_path/AAL_statistics_volumn_train.csv"
+test_csv="$test_output_path/AAL_statistics_volumn_test.csv"
 
-for subID in $subIDs 
+echo "=============== begin measurement ==============="
+
+# Remove old CSV files so results are not appended twice
+rm -f "$train_csv"
+rm -f "$test_csv"
+
+
+# =========================================================
+# TRAINING SUBJECTS
+# =========================================================
+for input in "$data_root"/train/Data_*.nii
 do
-	echo "Processing training image "$subID
-     fileext='.nii.gz'
-     file=$subID
-     basename $file $fileext
-     filename="${file%%.*}"
- 
+    subID="$(basename "$input")"
+    filename="${subID%%.*}"
 
-  
-     subGMMask=$train_output_path$filename'_greymatter_mask.nii.gz'
+    echo "Processing training image $filename"
 
-     echo " >>>> Create measurements for "$filename"  <<<<<<"
-     source ${root_path}/CreateSeedMask $train_output_path 'AAL_to_'$filename$fileext 
-	echo "i am done!"
-     seedMask_path=$train_output_path'seedMasks/'
- 	cd $seedMask_path
-	mask_IMGs=`ls | wc -l`	
-            
-     echo -n $filename >> ${train_output_path}"AAL_statistics_volumn_train.csv"
+    subGMMask="$train_output_path/${filename}_greymatter_mask.nii.gz"
+    atlas="$train_output_path/${filename}_aal.nii.gz"
+    seedMask_path="$train_output_path/seedMasks"
 
-	for i in $(eval echo {1..$mask_IMGs}); 
-	do
-	        #echo "i: "${i}
-          	#Calculate volume and save it into csv file
- 		#TODO
-     	done
-	
-	#TODO
+    if [ ! -f "$subGMMask" ]; then
+        echo "ERROR: Missing grey matter mask: $subGMMask"
+        exit 1
+    fi
 
-    	rm '-rf' $seedMask_path   
-     	cd $data_root'train/'
+    if [ ! -f "$atlas" ]; then
+        echo "ERROR: Missing transformed AAL atlas: $atlas"
+        exit 1
+    fi
 
-done
+    # Ensure masks belong to the current subject
+    rm -rf "$seedMask_path"
 
-#----- processing test images
-cd $data_root'test/'
-subIDs=`ls`
+    echo ">>>> Creating ROI masks for $filename <<<<"
 
-for subID in $subIDs 
-do
-	echo "Processing test image "$subID
-     fileext='.nii.gz'
-     file=$subID
-     basename $file $fileext
-     filename="${file%%.*}"
+    source "$root_path/code/CreateSeedMask" \
+        "$train_output_path/" \
+        "${filename}_aal.nii.gz"
 
-     subGMMask=$test_output_path$filename'_greymatter_mask.nii.gz'
+    # Start CSV row with subject ID
+    printf "%s" "$filename" >> "$train_csv"
 
-     echo " >>>> Create measurements for "$filename"  <<<<<<"
-     source ${root_path}/CreateSeedMask $test_output_path 'AAL_to_'$filename$fileext 
+    # First 90 AAL ROIs
+    for i in $(seq 1 90)
+    do
+        roiMask="$seedMask_path/${i}.nii.gz"
 
-     seedMask_path=$test_output_path'seedMasks/'
- 	cd $seedMask_path
-	mask_IMGs=`ls | wc -l`	
-            
-     echo -n $filename >> ${test_output_path}"AAL_statistics_volumn_test.csv"
+        if [ ! -f "$roiMask" ]; then
+            echo
+            echo "ERROR: Missing ROI mask $roiMask"
+            exit 1
+        fi
 
-	for i in $(eval echo {1..$mask_IMGs}); 
-	do
-          	#echo "i: "${i}
-          	#Calculate volume and save it into csv file
-          	#TODO
- 		
-     	done
-	#TODO
+        # -V returns: voxel_count volume_mm3
+        volume=$(fslstats "$subGMMask" \
+            -k "$roiMask" \
+            -V | awk '{print $2}')
 
+        printf ",%s" "$volume" >> "$train_csv"
+    done
 
-     rm '-rf' $seedMask_path   
-     cd $data_root'test/'
-         
+    # Finish subject row
+    printf "\n" >> "$train_csv"
+
+    rm -rf "$seedMask_path"
+
+    echo "Finished $filename"
 done
 
 
-#==================== End of measurement  =========#
+# =========================================================
+# TEST SUBJECTS
+# =========================================================
+for input in "$data_root"/test/Data_*.nii
+do
+    subID="$(basename "$input")"
+    filename="${subID%%.*}"
+
+    echo "Processing test image $filename"
+
+    subGMMask="$test_output_path/${filename}_greymatter_mask.nii.gz"
+    atlas="$test_output_path/${filename}_aal.nii.gz"
+    seedMask_path="$test_output_path/seedMasks"
+
+    if [ ! -f "$subGMMask" ]; then
+        echo "ERROR: Missing grey matter mask: $subGMMask"
+        exit 1
+    fi
+
+    if [ ! -f "$atlas" ]; then
+        echo "ERROR: Missing transformed AAL atlas: $atlas"
+        exit 1
+    fi
+
+    # Ensure masks belong to the current subject
+    rm -rf "$seedMask_path"
+
+    echo ">>>> Creating ROI masks for $filename <<<<"
+
+    source "$root_path/code/CreateSeedMask" \
+        "$test_output_path/" \
+        "${filename}_aal.nii.gz"
+
+    # Start CSV row with subject ID
+    printf "%s" "$filename" >> "$test_csv"
+
+    # First 90 AAL ROIs
+    for i in $(seq 1 90)
+    do
+        roiMask="$seedMask_path/${i}.nii.gz"
+
+        if [ ! -f "$roiMask" ]; then
+            echo
+            echo "ERROR: Missing ROI mask $roiMask"
+            exit 1
+        fi
+
+        volume=$(fslstats "$subGMMask" \
+            -k "$roiMask" \
+            -V | awk '{print $2}')
+
+        printf ",%s" "$volume" >> "$test_csv"
+    done
+
+    # Finish subject row
+    printf "\n" >> "$test_csv"
+
+    rm -rf "$seedMask_path"
+
+    echo "Finished $filename"
+done
+
+
+echo "=============== measurement complete ==============="
+echo "Training CSV: $train_csv"
+echo "Test CSV:     $test_csv"

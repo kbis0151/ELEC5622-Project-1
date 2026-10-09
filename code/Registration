@@ -8,69 +8,91 @@
 #                    |- test                     #
 #------------------------------------------------#
 
+#!/bin/bash
 
-root_path='/home/elec5622'
-data_root=$root_path'/Data/'
-package_DIR=$root_path'/Packages/'
+# Automatically locate repository root
+root_path="$(cd "$(dirname "$0")/.." && pwd)"
 
-output_path=$root_path'/Output/'
-train_output_path=$root_path'/Output/train/'
-test_output_path=$root_path'/Output/test/'
-floImg=$package_DIR'MNI152_T1_1mm_brain.nii'
-aalImg=$package_DIR'aal.nii'
+data_root="$root_path/Data"
+package_DIR="$root_path/Packages"
 
-#====================  registration =======================#
-echo "=============== begin registration... ========"
+train_output_path="$root_path/Output/train"
+test_output_path="$root_path/Output/test"
 
-#---- process training images
-cd $data_root'train/'
-subIDs=`ls`
+floImg="$package_DIR/MNI152_T1_1mm_brain.nii.gz"
+aalImg="$package_DIR/aal.nii.gz"
 
-for subID in $subIDs 
+echo "=============== begin registration... ==============="
+
+run_registration () {
+
+    input="$1"
+    output_dir="$2"
+
+    subID="$(basename "$input")"
+    filename="${subID%%.*}"
+
+    echo "============================================"
+    echo "Processing $filename"
+    echo "============================================"
+
+    refImg="$output_dir/${filename}_brain.nii.gz"
+
+    affineImg="$output_dir/${filename}_MNI_affine.nii.gz"
+    affineMat="$output_dir/${filename}_affine.txt"
+
+    deformImg="$output_dir/${filename}_MNI_deform.nii.gz"
+    cppImg="$output_dir/${filename}_cpp.nii.gz"
+
+    transformedAAL="$output_dir/${filename}_aal.nii.gz"
+
+    if [ ! -f "$refImg" ]; then
+        echo "ERROR: Missing reference brain: $refImg"
+        exit 1
+    fi
+
+    echo "Register MNI template using affine transform"
+
+    reg_aladin \
+        -ref "$refImg" \
+        -flo "$floImg" \
+        -res "$affineImg" \
+        -aff "$affineMat"
+
+    echo "Register MNI template using deformable transform"
+
+    reg_f3d \
+        -ref "$refImg" \
+        -flo "$floImg" \
+        -aff "$affineMat" \
+        -res "$deformImg" \
+        -cpp "$cppImg"
+
+    echo "Transform AAL atlas"
+
+    reg_resample \
+        -ref "$refImg" \
+        -flo "$aalImg" \
+        -res "$transformedAAL" \
+        -trans "$cppImg" \
+        -inter 0
+
+    echo "Finished $filename"
+}
+
+
+# ---------- TRAIN ----------
+for input in "$data_root"/train/Data_*.nii
 do
-   	echo "Processing training image "$subID
-     	refImg=$subID
-
-     fileext='.nii.gz'
-     file=$subID
-     basename $file $fileext
-     filename="${file%%.*}"
-	#affine registration
-     	echo "Register MNI template using affine transform"
-	#TODO
-     #deformable registration
-     	echo "Register MNI template using deformable transform"
-	#TODO
-     #transform AAL atlas
-    	#TODO
-     #remove files no longer needed
-	#TODO
+    run_registration "$input" "$train_output_path"
 done
 
-#---- process test images
-cd $data_root'test/'
-subIDs=`ls`
 
-for subID in $subIDs 
+# ---------- TEST ----------
+for input in "$data_root"/test/Data_*.nii
 do
-   	echo "Processing test image "$subID
-     	refImg=$subID
-
-     fileext='.nii.gz'
-     file=$subID
-     basename $file $fileext
-     filename=$file
-     filename="${file%%.*}"
-
-	#affine registration
-     	echo "Register MNI template using affine transform"
-	#TODO
-     #deformable registration
-     	echo "Register MNI template using deformable transform"
-	#TODO
-     #transform AAL atlas
-    	#TODO
-     #remove files no longer needed
-     #TODO
+    run_registration "$input" "$test_output_path"
 done
-#==================== End of registration ===============#
+
+
+echo "=============== registration complete ==============="

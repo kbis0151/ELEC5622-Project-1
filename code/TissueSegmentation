@@ -1,62 +1,95 @@
 #!/bin/bash
 
+# Automatically locate repository root
+root_path="$(cd "$(dirname "$0")/.." && pwd)"
 
-#---------------- Folder Arrangement ------------#
-#                  |- train                      #
-#         |- Data -|- test                       #
-# ~/home -|- Packages                            #
-#         |- Output -|- train                    #
-#                    |- test                     #
-#------------------------------------------------#
+data_root="$root_path/Data"
+train_output_path="$root_path/Output/train"
+test_output_path="$root_path/Output/test"
 
+echo "=============== begin grey matter segmentation ==============="
 
-root_path='/home/elec5622'
-data_root=$root_path'/Data/'
-package_DIR=$root_path'/Packages/'
-
-output_path=$root_path'/Output/'
-train_output_path=$root_path'/Output/train/'
-test_output_path=$root_path'/Output/test/'
-
-#================== Grey matter segmentation ==========#
-echo "=============== begin grey matter segmentation...========"
-
-#----- processing training images
-cd $data_root'train/'
-subIDs=`ls`
-
-for subID in $subIDs 
+# ---------- TRAINING IMAGES ----------
+for input in "$data_root"/train/Data_*.nii
 do
-	echo "Processing training image "$subID
-     	fileext='.nii.gz'
-     	file=$subID
-    	basename $file $fileext
-     	filename="${file%%.*}"
+    subID="$(basename "$input")"
+    filename="${subID%%.*}"
 
-     	#tissue segmentation
-     	base=$train_output_path$filename
-     	#TODO
-     	done
+    echo "Processing training image $filename"
 
+    brain="${train_output_path}/${filename}_brain.nii.gz"
+    base="${train_output_path}/${filename}_brain"
 
-#---- processing test images
-cd $data_root'test/'
-subIDs=`ls`
+    if [ ! -f "$brain" ]; then
+        echo "ERROR: Missing $brain"
+        exit 1
+    fi
 
-for subID in $subIDs 
-do
-echo "Processing test image "$subID
+    fast -S 1 -n 3 -t 1 -g -v \
+        -o "$base" \
+        "$brain"
 
-     	fileext='.nii.gz'
-     	file=$subID
-     	basename $file $fileext
-     	filename=$file
-     	filename="${file%%.*}"
+    mv -f "${base}_seg_0.nii.gz" \
+          "${train_output_path}/${filename}_csf_mask.nii.gz"
 
-     	#tissue segmentation
-     	base=$test_output_path$filename
-     	#TODO 
+    mv -f "${base}_seg_1.nii.gz" \
+          "${train_output_path}/${filename}_greymatter_mask.nii.gz"
+
+    mv -f "${base}_seg_2.nii.gz" \
+          "${train_output_path}/${filename}_whitematter_mask.nii.gz"
+
+    # Generate grey-matter-only MRI
+    fslmaths "$brain" \
+        -mul "${train_output_path}/${filename}_greymatter_mask.nii.gz" \
+        "${train_output_path}/${filename}_brain_greymatter.nii.gz"
+
+    # Remove FAST intermediate files which are no longer required
+    rm -f "${base}_pve_"*.nii.gz
+    rm -f "${base}_pveseg.nii.gz"
+    rm -f "${base}_mixeltype.nii.gz"
+    rm -f "${base}_seg.nii.gz"
 done
 
-#Please carefully check the segmented grey matter mask visually using fsleyes to ensure the result is correct.#
-#============= End of Grey matter segmentation=================#
+
+# ---------- TEST IMAGES ----------
+for input in "$data_root"/test/Data_*.nii
+do
+    subID="$(basename "$input")"
+    filename="${subID%%.*}"
+
+    echo "Processing test image $filename"
+
+    brain="${test_output_path}/${filename}_brain.nii.gz"
+    base="${test_output_path}/${filename}_brain"
+
+    if [ ! -f "$brain" ]; then
+        echo "ERROR: Missing $brain"
+        exit 1
+    fi
+
+    fast -S 1 -n 3 -t 1 -g -v \
+        -o "$base" \
+        "$brain"
+
+    mv -f "${base}_seg_0.nii.gz" \
+          "${test_output_path}/${filename}_csf_mask.nii.gz"
+
+    mv -f "${base}_seg_1.nii.gz" \
+          "${test_output_path}/${filename}_greymatter_mask.nii.gz"
+
+    mv -f "${base}_seg_2.nii.gz" \
+          "${test_output_path}/${filename}_whitematter_mask.nii.gz"
+
+    # Generate grey-matter-only MRI
+    fslmaths "$brain" \
+        -mul "${test_output_path}/${filename}_greymatter_mask.nii.gz" \
+        "${test_output_path}/${filename}_brain_greymatter.nii.gz"
+
+    # Remove FAST intermediate files which are no longer required
+    rm -f "${base}_pve_"*.nii.gz
+    rm -f "${base}_pveseg.nii.gz"
+    rm -f "${base}_mixeltype.nii.gz"
+    rm -f "${base}_seg.nii.gz"
+done
+
+echo "=============== grey matter segmentation complete ==============="
